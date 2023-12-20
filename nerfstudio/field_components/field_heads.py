@@ -41,6 +41,8 @@ class FieldHeadNames(Enum):
     SDF = "sdf"
     ALPHA = "alpha"
     GRADIENT = "gradient"
+    WEIGHT = "weight"
+    TRANSMITTANCE = "transmittance"
 
 
 class FieldHead(FieldComponent):

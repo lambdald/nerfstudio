@@ -20,6 +20,9 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import BarColumn, Progress, ProgressColumn, Task, TaskProgressColumn, TextColumn, TimeRemainingColumn
 from rich.text import Text
+from rich.traceback import install
+
+install(show_locals=False, width=500)
 
 CONSOLE = Console(width=120)
 

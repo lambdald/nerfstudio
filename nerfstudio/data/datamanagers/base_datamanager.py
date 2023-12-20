@@ -177,9 +177,9 @@ class DataManager(nn.Module):
         super().__init__()
         self.train_count = 0
         self.eval_count = 0
-        if self.train_dataset and self.test_mode != "inference":
+        if self.train_dataset is not None and self.test_mode != "inference":
             self.setup_train()
-        if self.eval_dataset and self.test_mode != "inference":
+        if self.eval_dataset is not None and self.test_mode != "inference":
             self.setup_eval()
 
     def forward(self):

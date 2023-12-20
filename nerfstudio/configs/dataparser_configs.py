@@ -38,22 +38,24 @@ from nerfstudio.data.dataparsers.sdfstudio_dataparser import SDFStudioDataParser
 from nerfstudio.data.dataparsers.sitcoms3d_dataparser import Sitcoms3DDataParserConfig
 from nerfstudio.plugins.registry_dataparser import discover_dataparsers
 
+from nerfstudio.criticalpixel.data.dataparser.colmap_parser import ColmapDataparserConfig as MetaColmapDataparserConfig
 dataparsers = {
     "nerfstudio-data": NerfstudioDataParserConfig(),
-    "minimal-parser": MinimalDataParserConfig(),
-    "arkit-data": ARKitScenesDataParserConfig(),
-    "blender-data": BlenderDataParserConfig(),
-    "instant-ngp-data": InstantNGPDataParserConfig(),
-    "nuscenes-data": NuScenesDataParserConfig(),
-    "dnerf-data": DNeRFDataParserConfig(),
-    "phototourism-data": PhototourismDataParserConfig(),
-    "dycheck-data": DycheckDataParserConfig(),
-    "scannet-data": ScanNetDataParserConfig(),
-    "sdfstudio-data": SDFStudioDataParserConfig(),
-    "nerfosr-data": NeRFOSRDataParserConfig(),
-    "sitcoms3d-data": Sitcoms3DDataParserConfig(),
-    "scannetpp-data": ScanNetppDataParserConfig(),
-    "colmap": ColmapDataParserConfig(),
+    # "minimal-parser": MinimalDataParserConfig(),
+    # "arkit-data": ARKitScenesDataParserConfig(),
+    # "blender-data": BlenderDataParserConfig(),
+    # "instant-ngp-data": InstantNGPDataParserConfig(),
+    # "nuscenes-data": NuScenesDataParserConfig(),
+    # "dnerf-data": DNeRFDataParserConfig(),
+    # "phototourism-data": PhototourismDataParserConfig(),
+    # "dycheck-data": DycheckDataParserConfig(),
+    # "scannet-data": ScanNetDataParserConfig(),
+    # "sdfstudio-data": SDFStudioDataParserConfig(),
+    # "nerfosr-data": NeRFOSRDataParserConfig(),
+    # "sitcoms3d-data": Sitcoms3DDataParserConfig(),
+    # "scannetpp-data": ScanNetppDataParserConfig(),
+    # "colmap": ColmapDataParserConfig(),
+    "meta-colmap": MetaColmapDataparserConfig(),
 }
 
 external_dataparsers, _ = discover_dataparsers()

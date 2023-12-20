@@ -148,6 +148,22 @@
         "--include_mono_prior=False",
         "--auto-orient=True"
       ]
-    }
+    },
+    {
+      "name": "Python: meta-colmap",
+      "type": "python",
+      "request": "launch",
+      "program": "nerfstudio/criticalpixel/scene/common_colmap/pipeline.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": { "CUDA_VISIBLE_DEVICES": "4" },
+      "args": [
+        "meta-colmap-nerfacto",
+        "--viewer.websocket-host=192.168.0.12",
+        "--viewer.websocket-port=9006",
+        "--data=/data/lidong/data/qushiguan20231205/2023_12_05_16_46_IMG_0359/undistorted_colmap",
+        "meta-colmap"
+      ]
+    },
   ]
 }

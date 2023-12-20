@@ -229,6 +229,7 @@ def main(config: TrainerConfig) -> None:
     if config.data:
         CONSOLE.log("Using --data alias for --data.pipeline.datamanager.data")
         config.pipeline.datamanager.data = config.data
+        config.pipeline.datamanager.dataparser.data = config.data
 
     if config.prompt:
         CONSOLE.log("Using --prompt alias for --data.pipeline.model.prompt")

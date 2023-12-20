@@ -370,6 +370,11 @@ class ViewerLegacyState:
         # draw the training cameras and images
         image_indices = self._pick_drawn_image_idxs(num_images)
         for idx in image_indices[image_indices < len(train_dataset)].tolist():
+            if not isinstance(train_dataset, InputDataset):
+                camera_json = train_dataset.get_viewer_json(idx)
+                self.viser_server.add_dataset_image(idx=f"{idx:06d}", json=camera_json)
+                continue
+
             image = train_dataset[idx]["image"]
             bgr = image[..., [2, 1, 0]]
             camera_json = train_dataset.cameras.to_json(camera_idx=idx, image=bgr, max_size=100)
@@ -379,6 +384,11 @@ class ViewerLegacyState:
         if eval_dataset is not None:
             image_indices = image_indices[image_indices >= len(train_dataset)] - len(train_dataset)
             for idx in image_indices.tolist():
+                if not isinstance(train_dataset, InputDataset):
+                    camera_json = train_dataset.get_viewer_json(idx)
+                    self.viser_server.add_dataset_image(idx=f"{idx+len(train_dataset):06d}", json=camera_json)
+                    continue
+
                 image = eval_dataset[idx]["image"]
                 bgr = image[..., [2, 1, 0]]
                 # color the eval image borders red

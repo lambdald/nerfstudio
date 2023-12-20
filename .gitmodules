@@ -1,0 +1,4 @@
+[submodule "nerfstudio/criticalpixel/dependencies/eigen"]
+	path = nerfstudio/criticalpixel/dependencies/eigen
+	url = https://gitlab.com/libeigen/eigen
+	branch = v3.4.1
