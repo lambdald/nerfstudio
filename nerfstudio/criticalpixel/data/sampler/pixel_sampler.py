@@ -96,8 +96,12 @@ class PixelSampler:
             chosen_indices = random.sample(range(len(nonzero_indices)), k=self.num_rays_per_batch)
             indices = nonzero_indices[chosen_indices]
         else:
-            fids = (torch.rand((batch_size,), device=hws.device) * hws.shape[0]).long() - 1
-            vus = (torch.rand((batch_size, 2), device=hws.device) * hws[fids]).long()
+            fids = (
+                torch.round(torch.rand((batch_size,), device=hws.device) * (hws.shape[0] - 1))
+                .long()
+                .clip(max=hws.shape[0] - 1)
+            )
+            vus = torch.round(torch.rand((batch_size, 2), device=hws.device) * (hws[fids] - 1)).long()
             indices = torch.cat((fids.unsqueeze(-1), vus), dim=1)  # [n, 3]
         return indices
 

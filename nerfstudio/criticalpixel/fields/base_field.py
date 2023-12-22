@@ -88,7 +88,7 @@ class BaseFieldConfig(FieldConfig):
 
 
 class BaseField(Field):
-    geometry_type: Literal["density", "sdf"]
+    geometry_type: Literal["density", "sdf", 'gaussian']
 
     config: BaseFieldConfig
     aabb: torch.Tensor

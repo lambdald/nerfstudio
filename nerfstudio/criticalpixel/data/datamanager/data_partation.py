@@ -143,6 +143,9 @@ class TrainFullDataPartation(DataPartation):
                 test_data[key] = FrameItems(
                     data.item, data.item_loader, data.item_processor, relpaths=[data.relpaths[i] for i in idx.tolist()]
                 )
+            elif isinstance(data, list):
+                assert len(data) == N
+                test_data[key] = [data[i] for i in idx.tolist()]
             else:
                 test_data[key] = data
         return frame_metadata, FrameMetadata.from_dict(test_data)

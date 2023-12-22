@@ -72,7 +72,7 @@ base_nvcc_flags = [
     "--extended-lambda",
     "--expt-relaxed-constexpr",
     # The following definitions must be undefined
-    # since TCNN requires half-precision operation.
+    # to support half-precision operation.
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",
     "-U__CUDA_NO_HALF2_OPERATORS__",
@@ -110,7 +110,7 @@ base_definitions = []
 
 
 c_backend = load(
-    name="pixeldance_cpp",
+    name="criticalpixel_cpp",
     extra_cflags=base_cflags,
     extra_cuda_cflags=base_nvcc_flags,
     sources=proj_src_files,

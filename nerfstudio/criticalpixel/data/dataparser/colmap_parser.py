@@ -45,7 +45,7 @@ class ColmapDataparser(DataParser):
         points = np.array(point_list)
         rgbs = np.array(rgb_list)
 
-        pc = PointCloud(torch.from_numpy(points), torch.from_numpy(rgbs))
+        pc = PointCloud(torch.from_numpy(points), torch.from_numpy(rgbs), batch_size=[len(point_list)])
         return pc
 
     def parse_data(self) -> SceneMetadata:
@@ -166,5 +166,5 @@ class ColmapDataparser(DataParser):
             bbox=bbox,
             transform_w2n=Transform3d(torch.eye(4)),
         )
-        scene_metadata.save(self.get_abspath(self.config.scene_metadata_path))
+        # scene_metadata.save(self.get_abspath(self.config.scene_metadata_path))
         return scene_metadata
