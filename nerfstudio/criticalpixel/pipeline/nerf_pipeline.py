@@ -50,7 +50,7 @@ from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttrib
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import profiler
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipelineConfig
-from nerfstudio.criticalpixel.data.datamanager.nerf_data_manager import NeRFDataManagerConfig
+from nerfstudio.criticalpixel.data.datamanager.nerf_data_manager import NeRFDataManagerConfig, NeRFDataManager
 
 
 @dataclass
@@ -63,6 +63,7 @@ class NeRFPipelineConfig(VanillaPipelineConfig):
     """specifies the datamanager config"""
     model: ModelConfig = ModelConfig()
     """specifies the model config"""
+
 
 class NeRFPipeline(Pipeline):
     """The pipeline class for the vanilla nerf setup of multiple cameras for one or a few scenes.
@@ -194,8 +195,8 @@ class NeRFPipeline(Pipeline):
         """
         self.eval()
         metrics_dict_list = []
-        assert isinstance(self.datamanager, (VanillaDataManager, ParallelDataManager))
-        num_images = len(self.datamanager.fixed_indices_eval_dataloader)
+        assert isinstance(self.datamanager, (NeRFDataManager))
+        num_images = sum(len(v) for v in self.datamanager.eval_image_dataloaders.values())
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -204,7 +205,7 @@ class NeRFPipeline(Pipeline):
             transient=True,
         ) as progress:
             task = progress.add_task("[green]Evaluating all eval images...", total=num_images)
-            for camera_ray_bundle, batch in self.datamanager.fixed_indices_eval_dataloader:
+            for image_id, camera_ray_bundle, batch in self.datamanager.iter_all_eval_image():
                 # time this the following line
                 inner_start = time()
                 height, width = camera_ray_bundle.shape

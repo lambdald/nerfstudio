@@ -46,12 +46,11 @@ from nerfstudio.cameras.rays import RayBundle
 class NeRFDataManagerConfig(VanillaDataManagerConfig):
     _target: Type = field(default_factory=lambda: NeRFDataManager)
     # dataparser: DataParserConfig = ColmapDataparserConfig()
-    spliter: DataPartationConfig = TrainFullDataPartationConfig()
+    spliter: DataPartationConfig = TrainFullDataPartationConfig(
+        num_eval_data=2,
+    )
     sampler: PixelSamplerConfig = PixelSamplerConfig(num_rays_per_batch=8192)
 
-    num_image_to_load: int = 50
-    num_iter_to_resample: int = 1000
-    num_rays_per_batch: int = 8192
     use_mask: bool = False
 
     def __post_init__(self):
@@ -111,7 +110,7 @@ class NeRFDataManager(DataManager):
         self.test_mode = test_mode
         self.test_split = "test" if test_mode in ["test", "inference"] else "val"
 
-        self.config.sampler.num_rays_per_batch = self.config.num_rays_per_batch
+        self.config.sampler.num_rays_per_batch = self.config.train_num_rays_per_batch
 
         if self.config.data is not None:
             self.config.dataparser.data = Path(self.config.data)
@@ -144,8 +143,9 @@ class NeRFDataManager(DataManager):
             self.train_data_iters[name] = iter(
                 CacheDataloader(
                     FrameDataset(scene_metadata.sensor_metadatas[name]),
-                    num_images_to_load=self.config.num_image_to_load,
-                    num_iters_to_reload_images=self.config.num_iter_to_resample,
+                    num_images_to_load=self.config.train_num_images_to_sample_from,
+                    num_iters_to_reload_images=self.config.train_num_times_to_repeat_images,
+                    device='cuda'
                 )
             )
         self.train_sampler = self.config.sampler.setup()
@@ -157,17 +157,20 @@ class NeRFDataManager(DataManager):
         CONSOLE.print("Setting up evaluation dataset...")
         self.eval_data_iters = {}
         self.eval_image_iters = {}
+        self.eval_image_dataloaders = {}
+
         scene_metadata: SceneMetadata = self.eval_scene_metadata
         for name in scene_metadata.sensor_metadatas:
             self.eval_data_iters[name] = iter(
                 CacheDataloader(
                     FrameDataset(scene_metadata.sensor_metadatas[name]),
-                    num_images_to_load=self.config.num_image_to_load,
-                    num_iters_to_reload_images=self.config.num_iter_to_resample,
+                    num_images_to_load=self.config.train_num_images_to_sample_from,
+                    num_iters_to_reload_images=self.config.train_num_times_to_repeat_images,
                 )
             )
 
             self.eval_image_iters[name] = iter(DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name])))
+            self.eval_image_dataloaders[name] = DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name]))
 
         self.eval_sampler = self.config.sampler.setup()
         self.eval_count = 0
@@ -292,6 +295,29 @@ class NeRFDataManager(DataManager):
         )
         image_batch_str = convert_enum_to_str(image_batch)
         return image_batch[FrameItemType.UniqueId], ray_bundle, image_batch_str
+
+    def iter_all_eval_image(self) -> Tuple[int, RayBundle, Dict]:
+        for sensor_name in self.eval_image_dataloaders:
+            for image_batch in self.eval_image_dataloaders[sensor_name]:
+                camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
+                posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
+
+                for k in image_batch:
+                    image_batch[k] = image_batch[k].squeeze(0).squeeze(0)
+                    if image_batch[k].ndim == 0:
+                        image_batch[k] = image_batch[k].view(-1)
+                    # print(k, image_batch[k].shape)
+                rays = posed_camera.get_pixelwise_rays(
+                    image_batch[FrameItemType.SensorId], image_batch[FrameItemType.Pose].to(self.device).float()
+                ).squeeze(0)
+                ray_bundle = RayBundle(
+                    origins=rays.origin,
+                    directions=rays.direction,
+                    pixel_area=None,
+                    camera_indices=image_batch[FrameItemType.SensorId].expand(rays.origin.shape[:-1] + (1,)),
+                )
+                image_batch_str = convert_enum_to_str(image_batch)
+                yield image_batch[FrameItemType.UniqueId], ray_bundle, image_batch_str
 
     def get_train_rays_per_batch(self) -> int:
         if self.train_sampler is not None:

@@ -39,7 +39,7 @@ def glob_imgs(path) -> List[Path]:
     imgs = []
     for ext in ["*.png", "*.PNG", "*.jpeg", "*.jpg", "*.JPEG", "*.JPG"]:
         imgs.extend(get_all_files(path, ext))
-    return imgs
+    return sorted(imgs)
 
 
 def create_dir_if_not_exists(dir_path):

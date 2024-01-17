@@ -19,10 +19,10 @@ class PanoramicCamera(Camera):
         u, v = uv.unbind(dim=-1)
 
         p = (u - cx) / f
-        t = -(v - cy) / f
+        t = (v - cy) / f
         cos_t = torch.cos(t)
         x = cos_t * torch.sin(p)
-        y = -torch.sin(t)
+        y = torch.sin(t)
         z = cos_t * torch.cos(p)
         return torch.stack([x, y, z], dim=-1)
 
@@ -31,7 +31,7 @@ class PanoramicCamera(Camera):
 
         x, y, z = points.unbind(dim=-1)
         lon = torch.atan2(x, z)
-        lat = torch.atan2(-y, torch.hypot(x, z))
+        lat = torch.atan2(y, torch.hypot(x, z))
 
         h, w = self.hws.unbind(dim=-1)
         f = h / math.pi
@@ -40,5 +40,5 @@ class PanoramicCamera(Camera):
         cy = h * 0.5
 
         u = lon * f + cx
-        v = -lat * f + cy
+        v = lat * f + cy
         return torch.stack([u, v], dim=-1)

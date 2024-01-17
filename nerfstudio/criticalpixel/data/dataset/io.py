@@ -15,6 +15,18 @@ def process_image(img: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(img)
 
 
+def read_mask(path: Union[Path, str]) -> np.ndarray:
+    """
+    load binary mask.
+    Returns:
+        np.ndarray: binary mask[h, w] (0: background, 255: foreground)
+    """
+    mask_path = Path(path)
+    assert mask_path.exists(), "mask path {} does not exist".format(mask_path)
+    mask = cv2.imread(str(mask_path), cv2.IMREAD_UNCHANGED) > 128
+    return mask
+
+
 # def process_mask(self, mask):
 #     """消除一部分可能存在于边界的无效点"""
 #     kErodeKernelSize = 3

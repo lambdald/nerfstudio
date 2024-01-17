@@ -9,7 +9,7 @@ from rich import print
 from nerfstudio.criticalpixel.camera.camera import CameraModel, Camera, create_camera, create_camera_from_dict
 import torch
 import numpy as np
-from nerfstudio.criticalpixel.data.dataset.io import read_image, process_image
+from nerfstudio.criticalpixel.data.dataset.io import read_image, process_image, read_mask
 from nerfstudio.criticalpixel.geometry.point_cloud import PointCloud
 from nerfstudio.criticalpixel.geometry.transform import Transform3d
 from nerfstudio.criticalpixel.data.dataparser.dataparser import DataParserConfig, CoordinateType
@@ -21,6 +21,7 @@ class ColmapDataparserConfig(DataParserConfig):
     _target: Type = field(default_factory=lambda: ColmapDataparser)
     sparse_reldir: Path = Path("sparse")
     image_reldir: Path = Path("images")
+    mask_reldir: Path = Path('masks')
     scene_metadata_path: Path = Path("nerf/scene_metadata.yaml")
     coordinate_type: CoordinateType = CoordinateType.OpenGL
 
@@ -66,6 +67,8 @@ class ColmapDataparser(DataParser):
                 cam_type = CameraModel.Fisheye
             elif cam.model == "SIMPLE_RADIAL":
                 cam_type = CameraModel.SimpleRadial
+            elif cam.model == 'PANORAMIC':
+                cam_type = CameraModel.Panoramic
             else:
                 raise NotImplementedError()
 
@@ -134,6 +137,7 @@ class ColmapDataparser(DataParser):
             print("pose.shape=", pose_w2c.shape)
 
             current_image_names = [self.config.image_reldir / images[img_id].name for img_id in frame_ids]
+            current_mask_names = [self.config.mask_reldir / (images[img_id].name + '.png') for img_id in frame_ids]
             # print(current_image_names)
 
             current_frames = FrameItems(
@@ -142,7 +146,14 @@ class ColmapDataparser(DataParser):
                 item_processor=process_image,
                 relpaths=current_image_names,
             )
-            items = {FrameItemType.Image: current_frames}
+            current_masks = FrameItems(
+                FrameItemType.Mask,
+                item_loader=read_mask,
+                item_processor=process_image,
+                relpaths=current_mask_names,
+            )
+
+            items = {FrameItemType.Image: current_frames, FrameItemType.Mask: current_masks}
             frame_metadata = FrameMetadata(
                 root_dir=self.config.data,
                 hw=hws,

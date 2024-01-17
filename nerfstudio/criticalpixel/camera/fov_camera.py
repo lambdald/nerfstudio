@@ -1,6 +1,6 @@
 import torch
-from nerfstudio.criticalpixel.camera.camera import Camera, CameraModel
-import math
+from nerfstudio.criticalpixel.camera.camera import Camera, CameraModel, create_camera
+from nerfstudio.criticalpixel.backend import c_backend
 
 
 def fov2focal(fov, pixels):
@@ -20,7 +20,7 @@ class FoVCamera(Camera):
 
     def backproject_to_3d(self, uv: torch.Tensor) -> torch.Tensor:
         fov = self.params[..., :2]  # xfov yfov
-        f = fov2focal(fov, torch.flip(self.hws, dim=-1))
+        f = fov2focal(fov, torch.flip(self.hws, dims=[-1]))
 
         c = self.params[..., 2:]
 
@@ -59,3 +59,11 @@ class FoVCamera(Camera):
         opengl_proj[..., 2, 3] = -(far * near) / (far - near)
         opengl_proj[..., 3, 2] = 1.0
         return opengl_proj
+
+    def pinhole(self):
+        fov = self.params[..., :2]  # xfov yfov
+        f = fov2focal(fov, torch.flip(self.hws, dims=[-1]))
+
+        params = self.params.clone()
+        params[..., :2] = f
+        return create_camera(CameraModel.Pinhole, self.hws, params)

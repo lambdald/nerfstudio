@@ -30,23 +30,3 @@ class FrameDataloader(DataLoader):
     """
 
     dataset: FrameDataset
-
-    def __init__(
-        self,
-        dataset: Dataset,
-        device: Union[torch.device, str] = "cpu",
-        **kwargs,
-    ):
-        assert isinstance(self.dataset, Sized)
-        super().__init__(dataset=dataset, **kwargs)  # This will set self.dataset
-
-        
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        # choose a random image index
-        image_idx = random.randint(0, len(self.dataset) - 1)
-        ray_bundle, batch = self.dataset.get_data(image_idx)
-        return ray_bundle, batch

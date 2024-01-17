@@ -103,10 +103,12 @@ class Camera:
         image: Optional[torch.Tensor] = None,
         max_size: Optional[int] = None,
     ) -> Dict:
-        params = self.params.flatten().tolist()
 
-        assert self.model in [CameraModel.Fisheye, CameraModel.Pinhole, CameraModel.OpenCV]
-
+        if self.model not in [CameraModel.Fisheye, CameraModel.Pinhole, CameraModel.OpenCV]:
+            camera = create_camera(CameraModel.FoV, torch.tensor([[720, 1280]]), torch.tensor([[30, 50, 640, 360]]).float()).pinhole()
+        else:
+            camera = self
+        params = camera.params.flatten().tolist()
         json_ = {
             "type": "PinholeCamera",
             "cx": params[2],
@@ -117,6 +119,8 @@ class Camera:
             "camera_index": camera_idx,
             "times": 0,
         }
+
+
         if image is not None:
             image_uint8 = (image * 255).detach().type(torch.uint8)
             if max_size is not None:

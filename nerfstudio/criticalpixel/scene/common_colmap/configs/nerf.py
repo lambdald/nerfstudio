@@ -38,17 +38,19 @@ nerf_descriptions = {
 
 nerf_method_configs["meta-colmap-nerfacto"] = TrainerConfig(
     method_name="meta-colmap-nerfacto",
-    steps_per_eval_batch=1000,
     steps_per_save=2000,
     max_num_iterations=100000,
+    steps_per_eval_batch=50000,
+    steps_per_eval_image=50000,
     mixed_precision=True,
     pipeline=NeRFPipelineConfig(
         datamanager=NeRFDataManagerConfig(
             dataparser=ColmapDataparserConfig(),
-            train_num_rays_per_batch=8192,
-            eval_num_rays_per_batch=8192,
-            train_num_images_to_sample_from=100,
+            train_num_rays_per_batch=4096,
+            eval_num_rays_per_batch=4096,
+            train_num_images_to_sample_from=3,
             train_num_times_to_repeat_images=500,
+            use_mask=True,
         ),
         model=NerfactoModelConfig(
             eval_num_rays_per_chunk=1 << 15,
@@ -62,7 +64,6 @@ nerf_method_configs["meta-colmap-nerfacto"] = TrainerConfig(
                     NerfFieldConfig(
                         use_spatial_distortion=True,
                         spatial_distortion_bound=1.2,
-
                         is_geometry_field=True,
                         position_encoder_config=TcnnGridEncoderConfig(
                             type="hashgrid", n_levels=5, log2_hashmap_size=17, desired_resolution=256

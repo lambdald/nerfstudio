@@ -92,7 +92,7 @@ class PixelSampler:
 
     def sample_pixels(self, batch_size: int, hws: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if isinstance(mask, torch.Tensor):
-            nonzero_indices = torch.nonzero(mask[..., 0], as_tuple=False)
+            nonzero_indices = torch.nonzero(mask, as_tuple=False)
             chosen_indices = random.sample(range(len(nonzero_indices)), k=self.num_rays_per_batch)
             indices = nonzero_indices[chosen_indices]
         else:
@@ -103,7 +103,7 @@ class PixelSampler:
             )
             vus = torch.round(torch.rand((batch_size, 2), device=hws.device) * (hws[fids] - 1)).long()
             indices = torch.cat((fids.unsqueeze(-1), vus), dim=1)  # [n, 3]
-        return indices
+        return indices.cpu()
 
     def sample(self, batch: Dict, mask: Optional[torch.Tensor] = None):
         """Sample an image batch and return a pixel batch.
