@@ -156,13 +156,30 @@
       "program": "nerfstudio/criticalpixel/scene/common_colmap/pipeline.py",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "env": { "CUDA_VISIBLE_DEVICES": "4" },
+      "env": { "CUDA_VISIBLE_DEVICES": "3" },
       "args": [
         "meta-colmap-nerfacto",
         "--viewer.websocket-host=192.168.0.12",
-        "--viewer.websocket-port=9006",
-        "--data=/data/lidong/data/qushiguan20231205/2023_12_05_16_46_IMG_0359/undistorted_colmap",
+        "--viewer.websocket-port=8410",
+        "--data=/data/lidong/data/insta360/shuyuan/video20240108/VID_20240108_140609_00_001_pano_sift",
         "meta-colmap"
+      ]
+    },
+    {
+      "name": "Python: colmap-gsplat",
+      "type": "python",
+      "request": "launch",
+      "program": "nerfstudio/criticalpixel/scene/common_colmap/pipeline.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": { "CUDA_VISIBLE_DEVICES": "3", "CUDA_LAUNCH_BLOCKING": "1"},
+      "args": [
+        "colmap-gsplat",
+        "--viewer.websocket-host=192.168.0.12",
+        "--viewer.websocket-port=8410",
+        "--data=/data/lidong/data/nerfuser/A/undistorted_colmap",
+        "meta-colmap",
+        "--sparse-reldir=sparse"
       ]
     },
   ]

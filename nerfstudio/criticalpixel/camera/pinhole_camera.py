@@ -1,5 +1,6 @@
 import torch
 from nerfstudio.criticalpixel.camera.camera import Camera, CameraModel
+from nerfstudio.criticalpixel.camera.fov_camera import focal2fov
 
 
 class PinholeCamera(Camera):
@@ -39,4 +40,11 @@ class PinholeCamera(Camera):
         opengl_proj[..., 2, 3] = -(far * near) / (far - near)
         opengl_proj[..., 3, 2] = 1.0
         return opengl_proj
-    
+
+    def fov(self):
+        f = self.params[..., :2]
+        return focal2fov(f, torch.flip(self.hws, dims=[-1]))
+
+    def rescale(self, scale: float):
+        self.params[..., :4] *= scale
+        self.hws = torch.round(self.hws * scale).int()

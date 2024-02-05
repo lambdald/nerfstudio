@@ -1,0 +1,34 @@
+name: test_pytorch_determined  # 实验名称
+# workspace: NeRF
+# project: F2NeRF
+workspace: 3DGS
+project: 3DGS
+
+resources:
+  slots_per_trial: 1  # 显卡数量
+entrypoint: /data/lidong/miniconda3/bin/python test.py  # 任务命令
+
+# 挂载
+bind_mounts:
+  - host_path: /data/lidong
+    container_path: /data/lidong
+    propagation: rshared
+
+
+# Use the single-searcher to run just one instance of the training script
+searcher:
+   name: single
+   # metric is required but it shouldn't hurt to ignore it at this point.
+   metric: none
+   # max_length is ignored if the training script ignores it.
+   max_length: 1
+
+
+max_restarts: 3 # 任务运行失败会重跑
+
+
+environment:
+  # image: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-622d512  # 镜像
+  image: pytorch/pytorch:2.1.2-cuda11.8-cudnn8-devel-determined
+  environment_variables:  # container环境变量
+  - USERNAME=lidong

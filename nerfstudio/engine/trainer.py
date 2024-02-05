@@ -34,6 +34,7 @@ from rich.table import Table
 from torch.cuda.amp.grad_scaler import GradScaler
 
 from nerfstudio.configs.experiment_config import ExperimentConfig
+from nerfstudio.criticalpixel.models.gaussian_splatting import GaussianSplattingModel
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
 from nerfstudio.engine.optimizers import Optimizers
 from nerfstudio.pipelines.base_pipeline import VanillaPipeline
@@ -227,9 +228,9 @@ class Trainer:
         """Train the model."""
         assert self.pipeline.datamanager.train_dataset is not None, "Missing DatsetInputs"
 
-        self.pipeline.datamanager.train_dataparser_outputs.save_dataparser_transform(
-            self.base_dir / "dataparser_transforms.json"
-        )
+        # self.pipeline.datamanager.train_dataparser_outputs.save_dataparser_transform(
+        #     self.base_dir / "dataparser_transforms.json"
+        # )
 
         self._init_viewer_state()
         with TimeWriter(writer, EventName.TOTAL_TRAIN_TIME):
@@ -267,6 +268,10 @@ class Trainer:
                         step=step,
                         avg_over_steps=True,
                     )
+
+                    # display psnr in cmd.
+                    writer.put_scalar(name=EventName.CURR_TRAIN_PSNR, scalar=metrics_dict["psnr"], step=step)
+                    writer.put_scalar(name=EventName.CURR_TRAIN_Loss, scalar=loss, step=step)
 
                 self._update_viewer_state(step)
 
@@ -453,6 +458,10 @@ class Trainer:
             for f in self.checkpoint_dir.glob("*"):
                 if f != ckpt_path:
                     f.unlink()
+
+        if isinstance(self.pipeline.model, GaussianSplattingModel):
+            ply_path: Path = self.checkpoint_dir / f"step-{step:09d}.ply"
+            self.pipeline.model.save_ply(ply_path)
 
     @profiler.time_function
     def train_iteration(self, step: int) -> TRAIN_INTERATION_OUTPUT:

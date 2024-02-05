@@ -59,11 +59,11 @@ dependencies = [
     "wandb>=0.13.3",
     "xatlas",
     "trimesh>=3.20.2",
+    "tensordict",
     "timm==0.6.7",
     "gsplat==0.1.0",
     "pytorch-msssim",
     "pathos"
-    "tensordict"
 ]
 
 [project.urls]

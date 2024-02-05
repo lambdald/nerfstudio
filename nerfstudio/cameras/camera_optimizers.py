@@ -32,6 +32,7 @@ from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.lie_groups import exp_map_SE3, exp_map_SO3xR3
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.configs.base_config import InstantiateConfig
+from nerfstudio.criticalpixel.camera.posed_camera import PosedCamera
 from nerfstudio.engine.optimizers import OptimizerConfig
 from nerfstudio.engine.schedulers import SchedulerConfig
 from nerfstudio.utils import poses as pose_utils
@@ -154,6 +155,13 @@ class CameraOptimizer(nn.Module):
     def apply_to_camera(self, camera: Cameras) -> None:
         """Apply the pose correction to the raybundle"""
         if self.config.mode != "off":
+            if isinstance(camera, PosedCamera):
+                assert camera.unique_ids is not None
+                adj = self([camera.unique_ids])
+                adj = torch.cat([adj, torch.Tensor([0, 0, 0, 1])[None, None].to(adj)], dim=1)
+                camera.pose_c2w = torch.bmm(camera.pose_c2w, adj)
+                return
+
             assert camera.metadata is not None, "Must provide id of camera in its metadata"
             assert "cam_idx" in camera.metadata, "Must provide id of camera in its metadata"
             camera_idx = camera.metadata["cam_idx"]

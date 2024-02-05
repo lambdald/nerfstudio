@@ -6,6 +6,7 @@ import pypose as pp
 @tensorclass
 class Gaussian2D:
     mean: torch.Tensor
+    conv: torch.Tensor
 
 
 def strip_lowerdiag(L: torch.Tensor) -> torch.Tensor:

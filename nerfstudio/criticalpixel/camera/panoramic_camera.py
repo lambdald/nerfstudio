@@ -42,3 +42,7 @@ class PanoramicCamera(Camera):
         u = lon * f + cx
         v = lat * f + cy
         return torch.stack([u, v], dim=-1)
+
+    def rescale(self, scale: float):
+        self.params[..., :3] *= scale
+        self.hws = torch.round(self.hws * scale).int()

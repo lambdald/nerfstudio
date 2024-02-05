@@ -1,45 +1,21 @@
-from nerfstudio.criticalpixel.data.dataset.scene_metadata import SceneMetadata
+import random
 from dataclasses import dataclass, field
-from nerfstudio.criticalpixel.data.dataparser.dataparser import DataParserConfig
-from nerfstudio.criticalpixel.data.dataparser.colmap_parser import ColmapDataparserConfig
-from nerfstudio.configs.base_config import InstantiateConfig
-from typing import Type, Tuple, Dict, Union
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generic,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    cast,
-    ForwardRef,
-    get_origin,
-    get_args,
-)
+from pathlib import Path
+from typing import Dict, List, Literal, Tuple, Type, Union
+
+import torch
+from torch.utils.data import DataLoader
+
+from nerfstudio.cameras.rays import RayBundle
+from nerfstudio.criticalpixel.camera.posed_camera import PosedCamera
+from nerfstudio.criticalpixel.data.dataloader.cache_dataloader import CacheDataloader
+from nerfstudio.criticalpixel.data.datamanager.data_partation import DataPartationConfig, TrainFullDataPartationConfig
 from nerfstudio.criticalpixel.data.dataset.frame_dataset import FrameDataset
 from nerfstudio.criticalpixel.data.dataset.frame_metadata import FrameItemType
-from nerfstudio.criticalpixel.data.datamanager.data_partation import DataPartationConfig, TrainFullDataPartationConfig
-from nerfstudio.criticalpixel.data.dataloader.cache_dataloader import CacheDataloader
-from nerfstudio.criticalpixel.data.sampler.pixel_sampler import PixelSamplerConfig, PixelSampler
-from nerfstudio.criticalpixel.geometry.ray import Ray
-import random
-from nerfstudio.criticalpixel.camera.posed_camera import PosedCamera
-from torch.utils.data import DataLoader
-import torch
+from nerfstudio.criticalpixel.data.dataset.scene_metadata import SceneMetadata
+from nerfstudio.criticalpixel.data.sampler.pixel_sampler import PixelSampler, PixelSamplerConfig
+from nerfstudio.data.datamanagers.base_datamanager import DataManager, VanillaDataManagerConfig
 from nerfstudio.utils.rich_utils import CONSOLE
-from nerfstudio.data.datamanagers.base_datamanager import (
-    DataManagerConfig,
-    DataManager,
-    VanillaDataManagerConfig,
-    VanillaDataManager,
-)
-from typing_extensions import TypeVar
-from pathlib import Path
-from nerfstudio.cameras.rays import RayBundle
 
 
 @dataclass
@@ -145,7 +121,7 @@ class NeRFDataManager(DataManager):
                     FrameDataset(scene_metadata.sensor_metadatas[name]),
                     num_images_to_load=self.config.train_num_images_to_sample_from,
                     num_iters_to_reload_images=self.config.train_num_times_to_repeat_images,
-                    device='cuda'
+                    device="cuda",
                 )
             )
         self.train_sampler = self.config.sampler.setup()
@@ -200,14 +176,13 @@ class NeRFDataManager(DataManager):
 
         ray_indices = batch["indices"]  # [ivu]
         camera = self.train_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
         device = torch.device(self.device)
 
-        rays = posed_camera.get_rays(
-            batch[FrameItemType.SensorId],
-            torch.flip(ray_indices[..., 1:3].to(device), dims=[-1]),
-            batch[FrameItemType.Pose].to(device).float(),
-        )
+        batch_camera = camera[batch[FrameItemType.SensorId]]
+        posed_camera = PosedCamera(
+            cameras=batch_camera, pose_c2w=batch[FrameItemType.Pose], coord_type=self.config.dataparser.coordinate_type
+        ).to(device)
+        rays = posed_camera.get_rays(torch.flip(ray_indices[..., 1:3].to(device), dims=[-1]))
         ray_bundle = RayBundle(
             origins=rays.origin,
             directions=rays.direction,
@@ -241,14 +216,12 @@ class NeRFDataManager(DataManager):
 
         ray_indices = batch["indices"]  # [uvs]
         camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
         device = torch.device(self.device)
-
-        rays = posed_camera.get_rays(
-            batch[FrameItemType.SensorId],
-            ray_indices[..., 1:3].to(device),
-            batch[FrameItemType.Pose].to(device).float(),
-        )
+        batch_camera = camera[batch[FrameItemType.SensorId]]
+        posed_camera = PosedCamera(
+            cameras=batch_camera, pose_c2w=batch[FrameItemType.Pose], coord_type=self.config.dataparser.coordinate_type
+        ).to(device)
+        rays = posed_camera.get_rays(torch.flip(ray_indices[..., 1:3].to(device), dims=[-1]))
         ray_bundle = RayBundle(
             origins=rays.origin,
             directions=rays.direction,
@@ -270,23 +243,27 @@ class NeRFDataManager(DataManager):
         )
         try:
             image_batch = next(self.eval_image_iters[sensor_name])
-        except StopIteration as e:
+        except StopIteration:
             self.eval_image_iters[sensor_name] = iter(
                 DataLoader(FrameDataset(self.eval_scene_metadata.sensor_metadatas[sensor_name]))
             )
             image_batch = next(self.eval_image_iters[sensor_name])
 
         camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
+        batch_camera = camera[image_batch[FrameItemType.SensorId]]
 
         for k in image_batch:
             image_batch[k] = image_batch[k].squeeze(0).squeeze(0)
             if image_batch[k].ndim == 0:
                 image_batch[k] = image_batch[k].view(-1)
             # print(k, image_batch[k].shape)
-        rays = posed_camera.get_pixelwise_rays(
-            image_batch[FrameItemType.SensorId], image_batch[FrameItemType.Pose].to(self.device).float()
-        ).squeeze(0)
+        posed_camera = PosedCamera(
+            cameras=batch_camera,
+            pose_c2w=image_batch[FrameItemType.Pose],
+            coord_type=self.config.dataparser.coordinate_type,
+        ).to(device)
+
+        rays = posed_camera.get_pixelwise_rays().squeeze(0)
         ray_bundle = RayBundle(
             origins=rays.origin,
             directions=rays.direction,
@@ -300,16 +277,18 @@ class NeRFDataManager(DataManager):
         for sensor_name in self.eval_image_dataloaders:
             for image_batch in self.eval_image_dataloaders[sensor_name]:
                 camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
-                posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
+
+                batch_camera = camera[image_batch[FrameItemType.SensorId]]
 
                 for k in image_batch:
                     image_batch[k] = image_batch[k].squeeze(0).squeeze(0)
                     if image_batch[k].ndim == 0:
                         image_batch[k] = image_batch[k].view(-1)
                     # print(k, image_batch[k].shape)
-                rays = posed_camera.get_pixelwise_rays(
-                    image_batch[FrameItemType.SensorId], image_batch[FrameItemType.Pose].to(self.device).float()
-                ).squeeze(0)
+                posed_camera = PosedCamera(
+                    batch_camera, image_batch[FrameItemType.Pose], self.config.dataparser.coordinate_type
+                )
+                rays = posed_camera.get_pixelwise_rays().squeeze(0)
                 ray_bundle = RayBundle(
                     origins=rays.origin,
                     directions=rays.direction,

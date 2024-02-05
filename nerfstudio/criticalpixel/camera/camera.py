@@ -1,18 +1,13 @@
-from typing import Any
-import torch
-from enum import Enum
-
-import torch
-from tensordict import tensorclass
-from enum import Enum
-from dataclasses import dataclass
-from typing import Union
-
-from typing import Dict, Optional
 import base64
 from abc import abstractmethod
-import torchvision
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, Optional, Union
+
 import cv2
+import torch
+import torchvision
+from tensordict import tensorclass
 
 
 @dataclass
@@ -103,9 +98,10 @@ class Camera:
         image: Optional[torch.Tensor] = None,
         max_size: Optional[int] = None,
     ) -> Dict:
-
         if self.model not in [CameraModel.Fisheye, CameraModel.Pinhole, CameraModel.OpenCV]:
-            camera = create_camera(CameraModel.FoV, torch.tensor([[720, 1280]]), torch.tensor([[30, 50, 640, 360]]).float()).pinhole()
+            camera = create_camera(
+                CameraModel.FoV, torch.tensor([[720, 1280]]), torch.tensor([[30, 50, 640, 360]]).float()
+            ).pinhole()
         else:
             camera = self
         params = camera.params.flatten().tolist()
@@ -120,7 +116,6 @@ class Camera:
             "times": 0,
         }
 
-
         if image is not None:
             image_uint8 = (image * 255).detach().type(torch.uint8)
             if max_size is not None:
@@ -131,6 +126,9 @@ class Camera:
             data = cv2.imencode(".jpg", image_uint8)[1].tobytes()  # type: ignore
             json_["image"] = str("data:image/jpeg;base64," + base64.b64encode(data).decode("ascii"))
         return json_
+
+    def rescale(self, scale: float):
+        raise NotImplementedError
 
 
 def create_camera(type: CameraModel, hws: torch.Tensor, params: torch.Tensor) -> Camera:

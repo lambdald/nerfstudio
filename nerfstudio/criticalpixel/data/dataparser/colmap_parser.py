@@ -1,29 +1,30 @@
-from nerfstudio.criticalpixel.data.dataparser.colmap.model import read_model
-from nerfstudio.configs.base_config import InstantiateConfig
 from dataclasses import dataclass, field
-from typing import Type, Dict
-from nerfstudio.criticalpixel.data.dataset.scene_metadata import FrameMetadata, SensorMetadata, SceneMetadata
-from nerfstudio.criticalpixel.data.dataset.frame_metadata import FrameItems, FrameItemType
 from pathlib import Path
-from rich import print
-from nerfstudio.criticalpixel.camera.camera import CameraModel, Camera, create_camera, create_camera_from_dict
-import torch
+from typing import Dict, Type
+
 import numpy as np
-from nerfstudio.criticalpixel.data.dataset.io import read_image, process_image, read_mask
+import torch
+from rich import print
+
+from nerfstudio.criticalpixel.camera.camera import CameraModel, create_camera
+from nerfstudio.criticalpixel.data.dataparser.colmap.model import read_model
+from nerfstudio.criticalpixel.data.dataparser.dataparser import CoordinateType, DataParserConfig
+from nerfstudio.criticalpixel.data.dataset.frame_metadata import FrameItems, FrameItemType
+from nerfstudio.criticalpixel.data.dataset.io import process_image, read_image, read_mask
+from nerfstudio.criticalpixel.data.dataset.scene_metadata import FrameMetadata, SceneMetadata, SensorMetadata
 from nerfstudio.criticalpixel.geometry.point_cloud import PointCloud
 from nerfstudio.criticalpixel.geometry.transform import Transform3d
-from nerfstudio.criticalpixel.data.dataparser.dataparser import DataParserConfig, CoordinateType
-from nerfstudio.data.dataparsers.base_dataparser import DataParserConfig, DataParser
+from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig
 
 
 @dataclass
 class ColmapDataparserConfig(DataParserConfig):
     _target: Type = field(default_factory=lambda: ColmapDataparser)
-    sparse_reldir: Path = Path("sparse")
+    sparse_reldir: Path = Path("colmap")
     image_reldir: Path = Path("images")
-    mask_reldir: Path = Path('masks')
+    mask_reldir: Path = Path("masks")
     scene_metadata_path: Path = Path("nerf/scene_metadata.yaml")
-    coordinate_type: CoordinateType = CoordinateType.OpenGL
+    coordinate_type: CoordinateType = CoordinateType.OpenCV
 
 
 class ColmapDataparser(DataParser):
@@ -46,7 +47,7 @@ class ColmapDataparser(DataParser):
         points = np.array(point_list)
         rgbs = np.array(rgb_list)
 
-        pc = PointCloud(torch.from_numpy(points), torch.from_numpy(rgbs), batch_size=[len(point_list)])
+        pc = PointCloud(torch.from_numpy(points).float(), torch.from_numpy(rgbs).byte(), batch_size=[len(point_list)])
         return pc
 
     def parse_data(self) -> SceneMetadata:
@@ -67,7 +68,7 @@ class ColmapDataparser(DataParser):
                 cam_type = CameraModel.Fisheye
             elif cam.model == "SIMPLE_RADIAL":
                 cam_type = CameraModel.SimpleRadial
-            elif cam.model == 'PANORAMIC':
+            elif cam.model == "PANORAMIC":
                 cam_type = CameraModel.Panoramic
             else:
                 raise NotImplementedError()
@@ -128,7 +129,7 @@ class ColmapDataparser(DataParser):
             pose_w2c = np.concatenate([current_image_rotmat, current_image_tvec[..., np.newaxis]], axis=-1)
             pose_btm = np.stack([np.array([[0.0, 0.0, 0.0, 1.0]]) for _ in range(len(pose_w2c))])
             pose_w2c = np.concatenate([pose_w2c, pose_btm], axis=1)
-            pose_w2c = torch.from_numpy(pose_w2c)
+            pose_w2c = torch.from_numpy(pose_w2c).float()
             pose_c2w = torch.inverse(pose_w2c)
 
             if self.config.coordinate_type == CoordinateType.OpenGL:
@@ -137,7 +138,6 @@ class ColmapDataparser(DataParser):
             print("pose.shape=", pose_w2c.shape)
 
             current_image_names = [self.config.image_reldir / images[img_id].name for img_id in frame_ids]
-            current_mask_names = [self.config.mask_reldir / (images[img_id].name + '.png') for img_id in frame_ids]
             # print(current_image_names)
 
             current_frames = FrameItems(
@@ -146,14 +146,21 @@ class ColmapDataparser(DataParser):
                 item_processor=process_image,
                 relpaths=current_image_names,
             )
-            current_masks = FrameItems(
-                FrameItemType.Mask,
-                item_loader=read_mask,
-                item_processor=process_image,
-                relpaths=current_mask_names,
-            )
 
-            items = {FrameItemType.Image: current_frames, FrameItemType.Mask: current_masks}
+            items = {FrameItemType.Image: current_frames}
+
+            if (self.config.data / self.config.mask_reldir).exists():
+                current_mask_names = [self.config.mask_reldir / (images[img_id].name + ".png") for img_id in frame_ids]
+
+                current_masks = FrameItems(
+                    FrameItemType.Mask,
+                    item_loader=read_mask,
+                    item_processor=process_image,
+                    relpaths=current_mask_names,
+                )
+
+                items[FrameItemType.Mask] = current_masks
+
             frame_metadata = FrameMetadata(
                 root_dir=self.config.data,
                 hw=hws,

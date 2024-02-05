@@ -1,57 +1,25 @@
-from nerfstudio.criticalpixel.data.dataset.scene_metadata import SceneMetadata
+import random
 from dataclasses import dataclass, field
-from nerfstudio.criticalpixel.data.dataparser.dataparser import DataParserConfig
-from nerfstudio.criticalpixel.data.dataparser.colmap_parser import ColmapDataparserConfig
-from nerfstudio.configs.base_config import InstantiateConfig
-from typing import Type, Tuple, Dict, Union
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generic,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    cast,
-    ForwardRef,
-    get_origin,
-    get_args,
-)
+from pathlib import Path
+from typing import Dict, Iterable, List, Literal, Tuple, Type, Union
+
+import torch
+from torch.utils.data import DataLoader
+
+from nerfstudio.cameras.rays import RayBundle
+from nerfstudio.criticalpixel.camera.posed_camera import PosedCamera
+from nerfstudio.criticalpixel.data.datamanager.data_partation import DataPartationConfig, TrainFullDataPartationConfig
 from nerfstudio.criticalpixel.data.dataset.frame_dataset import FrameDataset
 from nerfstudio.criticalpixel.data.dataset.frame_metadata import FrameItemType
-from nerfstudio.criticalpixel.data.datamanager.data_partation import DataPartationConfig, TrainFullDataPartationConfig
-from nerfstudio.criticalpixel.data.dataloader.cache_dataloader import CacheDataloader
-from nerfstudio.criticalpixel.data.sampler.pixel_sampler import PixelSamplerConfig, PixelSampler
-from nerfstudio.criticalpixel.geometry.ray import Ray
-import random
-from nerfstudio.criticalpixel.camera.posed_camera import PosedCamera
-from torch.utils.data import DataLoader
-import torch
+from nerfstudio.criticalpixel.data.dataset.scene_metadata import SceneMetadata
+from nerfstudio.data.datamanagers.base_datamanager import DataManager, VanillaDataManagerConfig
 from nerfstudio.utils.rich_utils import CONSOLE
-from nerfstudio.data.datamanagers.base_datamanager import (
-    DataManagerConfig,
-    DataManager,
-    VanillaDataManagerConfig,
-    VanillaDataManager,
-)
-from typing_extensions import TypeVar
-from pathlib import Path
-from nerfstudio.cameras.rays import RayBundle
 
 
 @dataclass
-class GsplatDataManagerConfig(VanillaDataManagerConfig):
-    _target: Type = field(default_factory=lambda: GsplatDataManager)
-    # dataparser: DataParserConfig = ColmapDataparserConfig()
+class GSplatDataManagerConfig(VanillaDataManagerConfig):
+    _target: Type = field(default_factory=lambda: GSplatDataManager)
     spliter: DataPartationConfig = TrainFullDataPartationConfig()
-    sampler: PixelSamplerConfig = PixelSamplerConfig(num_rays_per_batch=8192)
-
-    num_image_to_load: int = 100
-    num_iter_to_resample: int = 500
-    num_rays_per_batch: int = 2048
     use_mask: bool = False
 
     def __post_init__(self):
@@ -65,7 +33,18 @@ class GsplatDataManagerConfig(VanillaDataManagerConfig):
             warnings.warn("above message coming from", FutureWarning, stacklevel=3)
 
 
-class GsplatDataManager(DataManager):
+def convert_enum_to_str(data: Dict[FrameItemType, torch.Tensor]):
+    keys = list(data.keys())
+    new_data = {}
+    for key in keys:
+        if isinstance(key, FrameItemType):
+            new_data[key.value] = data[key]
+        else:
+            new_data[key] = data[key]
+    return new_data
+
+
+class GSplatDataManager(DataManager):
     """Basic stored data manager implementation.
 
     This is pretty much a port over from our old dataloading utilities, and is a little jank
@@ -78,14 +57,11 @@ class GsplatDataManager(DataManager):
         config: the DataManagerConfig used to instantiate class
     """
 
-    config: GsplatDataManagerConfig
-
-    train_sampler: PixelSampler
-    eval_sampler: PixelSampler
+    config: GSplatDataManagerConfig
 
     def __init__(
         self,
-        config: GsplatDataManagerConfig,
+        config: GSplatDataManagerConfig,
         device: Union[torch.device, str] = "cpu",
         test_mode: Literal["test", "val", "inference"] = "val",
         world_size: int = 1,
@@ -99,8 +75,6 @@ class GsplatDataManager(DataManager):
         self.sampler = None
         self.test_mode = test_mode
         self.test_split = "test" if test_mode in ["test", "inference"] else "val"
-
-        self.config.sampler.num_rays_per_batch = self.config.num_rays_per_batch
 
         if self.config.data is not None:
             self.config.dataparser.data = Path(self.config.data)
@@ -119,7 +93,7 @@ class GsplatDataManager(DataManager):
         self.train_dataset = self.train_scene_metadata
         self.eval_dataset = self.train_scene_metadata
 
-        print(self.test_mode, self.train_dataset)
+        print("mode:", self.test_mode, self.train_dataset, self.eval_dataset)
 
         super().__init__()
 
@@ -127,17 +101,12 @@ class GsplatDataManager(DataManager):
         """Sets up the data loaders for training"""
         assert self.train_dataset is not None
         CONSOLE.print("Setting up training dataset...")
-        self.train_data_iters = {}
+        self.train_image_iters = {}
         scene_metadata: SceneMetadata = self.train_scene_metadata
         for name in scene_metadata.sensor_metadatas:
-            self.train_data_iters[name] = iter(
-                CacheDataloader(
-                    FrameDataset(scene_metadata.sensor_metadatas[name]),
-                    num_images_to_load=self.config.num_image_to_load,
-                    num_iters_to_reload_images=self.config.num_iter_to_resample,
-                )
+            self.train_image_iters[name] = iter(
+                DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name]), batch_size=1, shuffle=True)
             )
-        self.train_sampler = self.config.sampler.setup()
         self.train_count = 0
 
     def setup_eval(self):
@@ -146,139 +115,73 @@ class GsplatDataManager(DataManager):
         CONSOLE.print("Setting up evaluation dataset...")
         self.eval_data_iters = {}
         self.eval_image_iters = {}
+        self.eval_image_dataloaders = {}
         scene_metadata: SceneMetadata = self.eval_scene_metadata
         for name in scene_metadata.sensor_metadatas:
             self.eval_data_iters[name] = iter(
-                CacheDataloader(
-                    FrameDataset(scene_metadata.sensor_metadatas[name]),
-                    num_images_to_load=self.config.num_image_to_load,
-                    num_iters_to_reload_images=self.config.num_iter_to_resample,
-                )
+                DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name]), batch_size=1, shuffle=True)
             )
 
             self.eval_image_iters[name] = iter(DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name])))
+            self.eval_image_dataloaders[name] = DataLoader(FrameDataset(scene_metadata.sensor_metadatas[name]))
 
-        self.eval_sampler = self.config.sampler.setup()
         self.eval_count = 0
         self.eval_image_count = 0
 
-    def next_train(self, step: int) -> Tuple[RayBundle, Dict]:
-        """Returns the next batch of data from the train dataloader."""
-        self.train_count += 1
+    def get_image_data(self, metadata: SceneMetadata, data_iters: Dict[str, Iterable]):
         sensor_name = random.choice(
             sum(
-                [
-                    [k] * len(self.train_scene_metadata.sensor_metadatas[k].frame_metadata)
-                    for k in self.train_data_iters.keys()
-                ],
-                [],
-            )
-        )
-        image_batch = next(self.train_data_iters[sensor_name])
-        assert self.train_sampler is not None
-        assert isinstance(image_batch, dict)
-
-        if self.config.use_mask and FrameItemType.Mask in image_batch:
-            mask = image_batch[FrameItemType.Mask]
-        else:
-            mask = None
-        batch = self.train_sampler.sample(image_batch, mask=mask)
-
-        ray_indices = batch["indices"]  # [uvs]
-        camera = self.train_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
-        device = torch.device(self.device)
-
-        rays = posed_camera.get_rays(
-            batch[FrameItemType.SensorId],
-            ray_indices[..., 1:3].to(device),
-            batch[FrameItemType.Pose].to(device).float(),
-        )
-        ray_bundle = RayBundle(
-            origins=rays.origin,
-            directions=rays.direction,
-            pixel_area=None,
-            camera_indices=batch[FrameItemType.SensorId],
-        )
-        return ray_bundle, batch
-
-    def next_eval(self, step: int) -> Tuple[RayBundle, Dict]:
-        """Returns the next batch of data from the eval dataloader."""
-        self.eval_count += 1
-        sensor_name = random.choice(
-            sum(
-                [
-                    [k] * len(self.eval_scene_metadata.sensor_metadatas[k].frame_metadata)
-                    for k in self.eval_data_iters.keys()
-                ],
-                [],
-            )
-        )
-        image_batch = next(self.eval_data_iters[sensor_name])
-        assert self.eval_sampler is not None
-        assert isinstance(image_batch, dict)
-
-        if self.config.use_mask and FrameItemType.Mask in image_batch:
-            mask = image_batch[FrameItemType.Mask]
-        else:
-            mask = None
-        batch = self.eval_sampler.sample(image_batch, mask=mask)
-
-        ray_indices = batch["indices"]  # [uvs]
-        camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
-        device = torch.device(self.device)
-        rays = posed_camera.get_rays(
-            batch[FrameItemType.SensorId],
-            ray_indices[..., 1:3].to(device),
-            batch[FrameItemType.Pose].to(device).float(),
-        )
-
-        ray_bundle = RayBundle(
-            origins=rays.origin,
-            directions=rays.direction,
-            pixel_area=None,
-            camera_indices=batch[FrameItemType.SensorId],
-        )
-
-        return ray_bundle, batch
-
-    def next_eval_image(self, step: int) -> Tuple[int, RayBundle, Dict]:
-        sensor_name = random.choice(
-            sum(
-                [
-                    [k] * len(self.eval_scene_metadata.sensor_metadatas[k].frame_metadata)
-                    for k in self.eval_data_iters.keys()
-                ],
+                [[k] * len(metadata.sensor_metadatas[k].frame_metadata) for k in data_iters.keys()],
                 [],
             )
         )
         try:
-            image_batch = next(self.eval_image_iters[sensor_name])
-        except StopIteration as e:
-            self.eval_image_iters[sensor_name] = iter(
-                DataLoader(FrameDataset(self.eval_scene_metadata.sensor_metadatas[sensor_name]))
-            )
-            image_batch = next(self.eval_image_iters[sensor_name])
+            image_batch = next(data_iters[sensor_name])
+        except StopIteration:
+            data_iters[sensor_name] = iter(DataLoader(FrameDataset(metadata.sensor_metadatas[sensor_name])))
+            image_batch = next(data_iters[sensor_name])
 
-        camera = self.eval_scene_metadata.sensor_metadatas[sensor_name].camera
-        posed_camera = PosedCamera(camera, self.config.dataparser.coordinate_type)
+        image_batch["sensor_name"] = sensor_name
+        return image_batch
 
-        for k in image_batch:
-            image_batch[k] = image_batch[k].squeeze(0).squeeze(0)
-            if image_batch[k].ndim == 0:
-                image_batch[k] = image_batch[k].view(-1)
-            # print(k, image_batch[k].shape)
-        rays = posed_camera.get_pixelwise_rays(
-            image_batch[FrameItemType.SensorId], image_batch[FrameItemType.Pose].to(self.device).float()
+    def get_data(self, image_data: Dict, scene_metadata: SceneMetadata):
+        camera = scene_metadata.sensor_metadatas[image_data["sensor_name"]].camera
+        for k in image_data:
+            if isinstance(image_data[k], torch.Tensor):
+                image_data[k] = image_data[k].squeeze(0)
+                if image_data[k].ndim == 0:
+                    image_data[k] = image_data[k].view(-1)
+
+        batch_camera = camera[image_data[FrameItemType.SensorId]]
+
+        posed_camera = PosedCamera(
+            batch_camera,
+            image_data[FrameItemType.Pose],
+            self.config.dataparser.coordinate_type,
+            image_data[FrameItemType.UniqueId],
+            batch_size=batch_camera.batch_size,
         )
-        ray_bundle = RayBundle(
-            origins=rays.origin,
-            directions=rays.direction,
-            pixel_area=None,
-            camera_indices=image_batch[FrameItemType.SensorId],
-        )
-        return image_batch[FrameItemType.UniqueId], ray_bundle, image_batch
+        image_batch_str = convert_enum_to_str(image_data)
+        return posed_camera, image_batch_str
+
+    def next_train(self, step: int) -> Tuple[RayBundle, Dict]:
+        image_data = self.get_image_data(self.train_scene_metadata, self.train_image_iters)
+        return self.get_data(image_data, self.train_scene_metadata)
+
+    def next_eval(self, step: int) -> Tuple[RayBundle, Dict]:
+        image_data = self.get_image_data(self.eval_scene_metadata, self.eval_image_iters)
+        return self.get_data(image_data, self.eval_scene_metadata)
+
+    def next_eval_image(self, step: int) -> Tuple[int, Dict]:
+        image_data = self.get_image_data(self.eval_scene_metadata, self.eval_image_iters)
+        return self.get_data(image_data, self.eval_scene_metadata)
+
+    def iter_all_eval_image(self) -> Tuple[int, Dict]:
+        for sensor_name in self.eval_image_dataloaders:
+            for image_batch in self.eval_image_dataloaders[sensor_name]:
+                image_batch["sensor_name"] = sensor_name
+                data = self.get_data(image_batch, self.eval_scene_metadata)
+                yield data
 
     def get_train_rays_per_batch(self) -> int:
         if self.train_sampler is not None:

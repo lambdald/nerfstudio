@@ -24,18 +24,20 @@ from typing import Dict
 import tyro
 
 from nerfstudio.configs.external_methods import get_external_methods
+from nerfstudio.criticalpixel.scene.common_colmap.configs.gsplat import gsplat_descriptions, gsplat_method_configs
+from nerfstudio.criticalpixel.scene.common_colmap.configs.nerf import nerf_descriptions, nerf_method_configs
 from nerfstudio.engine.trainer import TrainerConfig
 from nerfstudio.plugins.registry import discover_methods
-from nerfstudio.criticalpixel.scene.common_colmap.configs.nerf import (nerf_descriptions,
-                                                       nerf_method_configs)
-
 
 method_configs: Dict[str, TrainerConfig] = {}
-method_configs.update(nerf_method_configs)
-
 descriptions: Dict[str, str] = {}
+
+
+method_configs.update(nerf_method_configs)
 descriptions.update(nerf_descriptions)
 
+method_configs.update(gsplat_method_configs)
+descriptions.update(gsplat_descriptions)
 
 
 def merge_methods(methods, method_descriptions, new_methods, new_descriptions, overwrite=True):
